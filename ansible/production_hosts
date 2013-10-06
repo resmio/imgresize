@@ -1,0 +1,2 @@
+[production]
+162.243.32.132 ansible_ssh_user=root project_dir=/imgresize

@@ -1,0 +1,25 @@
+---
+- hosts: all
+  sudo: yes
+
+  tasks:
+    - name: update apt repo
+      action: apt update-cache=yes
+
+    - name: add the docker repository key to your local keychain
+      action: apt_key url=https://get.docker.io/gpg state=present
+
+    - name: add the docker repository to your apt sources list
+      action: apt_repository repo='deb http://get.docker.io/ubuntu docker main' state=present
+
+    - name: update apt repo
+      action: apt update-cache=yes
+
+    - name: install docker
+      action: apt name=lxc-docker state=installed
+
+    - name: get the git project
+      git: repo=https://bitbucket.org/resmio/imgresize.git
+
+    - name: Build docker image
+      command: docker build -t /imgresize imgresize

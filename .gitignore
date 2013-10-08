@@ -1,1 +1,4 @@
 .vagrant
+cachedir
+.floo*
+.sublime*

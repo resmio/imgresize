@@ -6,6 +6,10 @@
     - name: update apt repo
       action: apt update-cache=yes
 
+    - name: update AUFS filesystem support
+      # sudo apt-get install linux-image-extra-`uname -r`
+      action: apt name=linux-image-extra-3.8.0-31-generic state=installed
+
     - name: add the docker repository key to your local keychain
       action: apt_key url=https://get.docker.io/gpg state=present
 

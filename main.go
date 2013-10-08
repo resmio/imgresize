@@ -51,7 +51,7 @@ func parse_request(path string)(width, height uint64, url, ext string, err error
     return
 }
 
-// exists returns whether the given file or directory exists or not
+// returns whether the given file or directory exists or not
 func pathExists(path string) (bool) {
     _, err := os.Stat(path)
     if err == nil { return true }
@@ -74,17 +74,12 @@ func saveImage(img image.Image, path string) error {
         log.Println("Error creating", path)
         return err
     }
+    defer fi.Close()
 
     // save image
     jpeg.Encode(fi, img, nil)
 
     // close fi on exit and check for its returned error
-    defer func() {
-        if err := fi.Close(); err != nil {
-            log.Println("Error closing", path)
-            return
-        }
-    }()
     return nil
 }
 
@@ -94,6 +89,7 @@ func loadImage(path string) (image.Image, error) {
         log.Println("Error reading", path)
         return nil, err
     }
+    defer fi.Close()
 
     var img image.Image
     img, err = jpeg.Decode(fi)
@@ -101,13 +97,6 @@ func loadImage(path string) (image.Image, error) {
         return nil, err
     }
 
-    // close fi on exit and check for its returned error
-    defer func() {
-        if err := fi.Close(); err != nil {
-            log.Println("Error closing", path)
-            return
-        }
-    }()
     return img, nil
 }
 
@@ -153,7 +142,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         defer resp.Body.Close()
 
         // decode jpeg into image.Image
-        img, err := jpeg.Decode(resp.Body)
+        img, err = jpeg.Decode(resp.Body)
+        log.Println(img.Bounds())
         if err != nil {
             log.Println("Error decoding the image")
             log.Println(err)
@@ -161,19 +151,35 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         }
         // save original image
         saveImage(img, urlToPath(url, ext))
+        log.Println(img.Bounds())
         // resize image
         img = resize.Resize(uint(height), uint(width), img, resize.NearestNeighbor)
+        log.Println(img.Bounds())
         // save resized version in cache
         saveImage(img, urlToPath(r.URL.Path, ext))
+        log.Println(img.Bounds())
     }
 
-    //log.Println("image is", img)
     // write new image to request writer
-    jpeg.Encode(w, img, nil)
+
+    log.Println(img.Bounds())
+    err = jpeg.Encode(w, img, nil)
+    if err != nil {
+        log.Println("Error encoding file")
+        log.Println(err)
+    }
     return
 }
 
 func main() {
+    if !pathExists(cacheDir) {
+        err = os.Mkdir(cacheDir, 0700)
+        if err != nil {
+            log.Println("Error creating directory", cacheDir)
+            log.Println(err)
+            return
+        }
+    }
     srv := &http.Server{
             Addr:    ":8080",
             Handler: &Handler{},

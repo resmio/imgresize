@@ -6,80 +6,174 @@ import (
     "net/http"
     // "io"
     // "os"
+    "image"
     "image/jpeg" 
     "log"
     "strconv"
+    "hash/crc32"
+    "errors"
+    "os"
     // "reflect"
+    "path/filepath"
 )
 
 import "github.com/nfnt/resize"
 
+var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_]+)((?i)\.jpeg|\.jpg)$`)
+var cacheDir = "./cachedir"
+
+func hash(s string) uint32 {
+    return crc32.ChecksumIEEE([]byte(s))
+}
+
+func parse_request(path string)(width, height uint64, url, ext string, err error) {
+    res := re.FindStringSubmatch(path)
+
+    if res == nil {
+        err = errors.New("No match for the regexp.")
+        return
+    }
+
+    var parseErr error
+    height, parseErr = strconv.ParseUint(res[1], 10, 64)
+    if parseErr != nil {
+        err = errors.New("Could not parse width.")
+        return
+    }
+    width, parseErr = strconv.ParseUint(res[2], 10, 64)
+    if parseErr != nil {
+        err = errors.New("Could not parse height.")
+        return
+    }
+    url = res[3] + res[4]
+    ext = res[4]
+    fmt.Println(hash(url))  
+    return
+}
+
+// exists returns whether the given file or directory exists or not
+func pathExists(path string) (bool) {
+    _, err := os.Stat(path)
+    if err == nil { return true }
+    if os.IsNotExist(err) { return false }
+    return false
+}
+
+func urlToPath(url string, ext string) string {
+    checksum := hash(url)
+    log.Println("Checksum", checksum)
+    filename := strconv.Itoa(int(checksum)) + ext
+    log.Println("Filename", filename)
+    path := filepath.Join(cacheDir, filename)
+    return path
+}
+
+func saveImage(img image.Image, path string) error {
+    fi, err := os.Create(path)
+    if err != nil {
+        log.Println("Error creating", path)
+        return err
+    }
+
+    // save image
+    jpeg.Encode(fi, img, nil)
+
+    // close fi on exit and check for its returned error
+    defer func() {
+        if err := fi.Close(); err != nil {
+            log.Println("Error closing", path)
+            return
+        }
+    }()
+    return nil
+}
+
+func loadImage(path string) (image.Image, error) {
+    fi, err := os.Open(path)
+    if err != nil {
+        log.Println("Error reading", path)
+        return nil, err
+    }
+
+    var img image.Image
+    img, err = jpeg.Decode(fi)
+    if err != nil {
+        return nil, err
+    }
+
+    // close fi on exit and check for its returned error
+    defer func() {
+        if err := fi.Close(); err != nil {
+            log.Println("Error closing", path)
+            return
+        }
+    }()
+    return img, nil
+}
+
 type Handler struct {}
  
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-    re, err := regexp.Compile(`^([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_]+)$`)
-
+    path := r.URL.Path
+    height, width, url, ext, err := parse_request(path)
     if err != nil {
-        fmt.Printf("There is a problem with you regexp.\n")
+        log.Println("Bad request", path)
+        log.Println(err)
         return
     }
 
-    res := re.FindAllStringSubmatch(r.URL.Path[1:], -1)
+    var img image.Image
 
-    if len(res) == 0 {
-        fmt.Printf("No match for the regexp.\n")
-        return
+    if path := urlToPath(r.URL.Path, ext); pathExists(path) {
+        // file is cached in it's requested size
+        log.Println("file is cached in it's requested size")
+        img, err = loadImage(path)
+    } else if path := urlToPath(url, ext); pathExists(path) {
+        // file is cached only in the original size
+        log.Println("file is cached only in the original size")
+        img, err = loadImage(path)
+        // resize image
+        img = resize.Resize(uint(height), uint(width), img, resize.NearestNeighbor)
+        // save resized version in cache
+        saveImage(img, urlToPath(r.URL.Path, ext))
+    } else {
+        // file is not cached at all
+        log.Println("file is not cached at all")
+        // download the file
+        resp, err := http.Get(url)
+        if err != nil {
+            log.Println("Error getting the image")
+            fmt.Println(err)
+            return
+        }
+        if code := resp.StatusCode; code != 200 {
+            log.Println("Error getting the image: got status code", code)
+            return
+        }
+        defer resp.Body.Close()
+
+        // decode jpeg into image.Image
+        img, err := jpeg.Decode(resp.Body)
+        if err != nil {
+            log.Println("Error decoding the image")
+            log.Println(err)
+            return
+        }
+        // save original image
+        saveImage(img, urlToPath(url, ext))
+        // resize image
+        img = resize.Resize(uint(height), uint(width), img, resize.NearestNeighbor)
+        // save resized version in cache
+        saveImage(img, urlToPath(r.URL.Path, ext))
     }
 
-    height, err := strconv.ParseUint(res[0][1], 10, 64)
-    width, err := strconv.ParseUint(res[0][2], 10, 64)
-    url := res[0][3]
-
-    // out, err := os.Create("output.jpg")
-    // if err != nil {
-    //     fmt.Printf("Could not open file for saving.\n")
-    //     return
-    // }
-    // defer out.Close()
-
-    resp, err := http.Get(url)
-    if err != nil {
-        fmt.Printf("Could not get the image.\n")
-        return
-    }
-    defer resp.Body.Close()
-
-    // decode jpeg into image.Image
-    img, err := jpeg.Decode(resp.Body)
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // resize to width 1000 using Lanczos resampling
-    // and preserve aspect ratio
-    m := resize.Resize(uint(height), uint(width), img, resize.Lanczos3)
-
-    // write new image to file
-    jpeg.Encode(w, m, nil)
-
-    // n, err := io.Copy(out, resp.Body)
-    // if err != nil {
-    //     fmt.Printf("Could not save the image.\n")
-    //     return
-    // }
-    // fmt.Println(n)
-
-    // fmt.Println(height, width, url)
-    // fmt.Println(res)
-    // fmt.Fprintf(w, "%v", res)
-    // uri := r.URL.Path
-    // fmt.Fprint(w, uri)
+    //log.Println("image is", img)
+    // write new image to request writer
+    jpeg.Encode(w, img, nil)
     return
 }
 
 func main() {
-
     srv := &http.Server{
             Addr:    ":8080",
             Handler: &Handler{},

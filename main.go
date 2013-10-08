@@ -143,7 +143,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
         // decode jpeg into image.Image
         img, err = jpeg.Decode(resp.Body)
-        log.Println(img.Bounds())
         if err != nil {
             log.Println("Error decoding the image")
             log.Println(err)
@@ -151,18 +150,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         }
         // save original image
         saveImage(img, urlToPath(url, ext))
-        log.Println(img.Bounds())
         // resize image
         img = resize.Resize(uint(height), uint(width), img, resize.NearestNeighbor)
-        log.Println(img.Bounds())
         // save resized version in cache
         saveImage(img, urlToPath(r.URL.Path, ext))
-        log.Println(img.Bounds())
     }
 
     // write new image to request writer
-
-    log.Println(img.Bounds())
     err = jpeg.Encode(w, img, nil)
     if err != nil {
         log.Println("Error encoding file")

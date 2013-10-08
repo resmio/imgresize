@@ -1,0 +1,39 @@
+---
+- hosts: all
+  sudo: yes
+
+  tasks:
+    - name: update apt repo
+      apt: update-cache=yes
+
+    - name: install package needed for apt-add-repository
+      apt: name=python-software-properties state=installed
+
+    - name: update kernel
+      apt: name={{item}} state=installed
+      with_items:
+        - linux-image-generic-lts-raring 
+        - linux-headers-generic-lts-raring
+
+    #- name: reboot
+    #  command: /sbin/reboot
+
+    #- name: update AUFS filesystem support
+    #  # sudo apt-get install linux-image-extra-`uname -r`
+    #  action: apt name=linux-image-extra-3.8.0-31-generic state=installed
+
+    - name: add the docker repository key to your local keychain
+      apt_key: url=https://get.docker.io/gpg state=present
+
+    - name: add the docker repository to your apt sources list
+      shell: echo deb http://get.docker.io/ubuntu docker main > /etc/apt/sources.list.d/docker.list
+      #apt_repository: repo='deb http://get.docker.io/ubuntu docker main' state=present
+
+    - name: update apt repo
+      apt: update-cache=yes
+
+    - name: install docker
+      apt: name=lxc-docker state=installed
+
+    - name: Build docker image
+      command: docker build -t /imgresize /vagrant

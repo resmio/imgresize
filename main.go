@@ -26,6 +26,12 @@ func hash(s string) uint32 {
     return crc32.ChecksumIEEE([]byte(s))
 }
 
+// get the parameters from the url path
+// returns
+// - width of the image
+// - height of the image
+// - url where the original image is located (including the extension)
+// - extension (including the dot)
 func parse_request(path string)(width, height uint64, url, ext string, err error) {
     res := re.FindStringSubmatch(path)
 
@@ -62,7 +68,7 @@ func pathExists(path string) (bool) {
 func urlToPath(url string, ext string) string {
     checksum := hash(url)
     log.Println("Checksum", checksum)
-    filename := strconv.Itoa(int(checksum)) + ext
+    filename := strconv.FormatUint(uint64(checksum), 36) + ext
     log.Println("Filename", filename)
     path := filepath.Join(cacheDir, filename)
     return path

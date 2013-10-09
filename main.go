@@ -39,12 +39,12 @@ func parse_request(path string)(width, height uint64, url, ext string, err error
     }
 
     var parseErr error
-    height, parseErr = strconv.ParseUint(res[1], 10, 64)
+    width, parseErr = strconv.ParseUint(res[1], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse width.")
         return
     }
-    width, parseErr = strconv.ParseUint(res[2], 10, 64)
+    height, parseErr = strconv.ParseUint(res[2], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse height.")
         return

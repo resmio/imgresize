@@ -1,0 +1,4 @@
+- add cachedir as command line option
+- add tests
+- return proper http error codes
+- only allow access by whitelisted domains

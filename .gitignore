@@ -2,3 +2,5 @@
 cachedir
 .floo*
 .sublime*
+fabfile.pyc
+imgresize

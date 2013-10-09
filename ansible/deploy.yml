@@ -4,22 +4,32 @@
 
   tasks:
     - name: update apt repo
-      action: apt update-cache=yes
+      apt: update-cache=yes
 
-    - name: add the docker repository key to your local keychain
-      action: apt_key url=https://get.docker.io/gpg state=present
-
-    - name: add the docker repository to your apt sources list
-      action: apt_repository repo='deb http://get.docker.io/ubuntu docker main' state=present
-
-    - name: update apt repo
-      action: apt update-cache=yes
-
-    - name: install docker
-      action: apt name=lxc-docker state=installed
+    - name: install git
+      apt: name={{item}} state=installed
+      with_items:
+        - git
+        - supervisor
+        - golang
 
     - name: get the git project
-      git: repo=https://bitbucket.org/resmio/imgresize.git
+      git: repo=https://bitbucket.org/resmio/imgresize.git dest={{project_dir}}
 
-    - name: Build docker image
-      command: docker build -t /imgresize imgresize
+    - name: get the go dependencies
+      command: go get github.com/nfnt/resize
+
+    - name: build the go project
+      command: chdir={{project_dir}} go build
+
+    - name: create cache directory
+      command: mkdir -p {{project_dir}}/cachedir/
+
+    - name: give access to cachedirectory
+      command: chown www-data {{project_dir}}/cachedir/
+
+    - name: copy supervisor configuration file
+      template: src=./files/supervisord.conf dest=/etc/supervisor/conf.d/imgresize.conf
+
+    - name: restart supervisor
+      service: name=supervisor state=restarted

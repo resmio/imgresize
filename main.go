@@ -4,8 +4,6 @@ import (
     "fmt"
     "regexp"
     "net/http"
-    // "io"
-    // "os"
     "image"
     "image/jpeg" 
     "log"
@@ -13,14 +11,14 @@ import (
     "hash/crc32"
     "errors"
     "os"
-    // "reflect"
     "path/filepath"
+    "flag"
 )
 
 import "github.com/nfnt/resize"
 
 var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_]+)((?i)\.jpeg|\.jpg)$`)
-var cacheDir = "./cachedir"
+var cacheDir string
 
 func hash(s string) uint32 {
     return crc32.ChecksumIEEE([]byte(s))
@@ -172,7 +170,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+    var port int
+    flag.StringVar(&cacheDir, "cachedir", "./cachedir", "path to cache directory")
+    flag.IntVar(&port, "port", 8080, "port")
+    flag.Parse()
+
     if !pathExists(cacheDir) {
+        log.Println("Create new cache directory", cacheDir)
         err = os.Mkdir(cacheDir, 0700)
         if err != nil {
             log.Println("Error creating directory", cacheDir)
@@ -181,7 +185,7 @@ func main() {
         }
     }
     srv := &http.Server{
-            Addr:    ":8080",
+            Addr:    fmt.Sprintf(":%d", port),
             Handler: &Handler{},
     }
     log.Fatal(srv.ListenAndServe())

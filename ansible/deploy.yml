@@ -25,7 +25,7 @@
     - name: create cache directory
       command: mkdir -p {{project_dir}}/cachedir/
 
-    - name: give access to cachedirectory
+    - name: give access to cache directory
       command: chown www-data {{project_dir}}/cachedir/
 
     - name: copy supervisor configuration file

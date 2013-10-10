@@ -6,10 +6,12 @@ import (
     "net/http"
     "image"
     "image/jpeg" 
+    "image/png" 
     "log"
     "strconv"
     "hash/crc32"
     "errors"
+    "io"
     "os"
     "path/filepath"
     "flag"
@@ -17,7 +19,7 @@ import (
 
 import "github.com/nfnt/resize"
 
-var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_]+)((?i)\.jpeg|\.jpg)$`)
+var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_ ]+)(\.\w+)$`)
 var cacheDir string
 
 func hash(s string) uint32 {
@@ -72,7 +74,7 @@ func urlToPath(url string, ext string) string {
     return path
 }
 
-func saveImage(img image.Image, path string) error {
+func saveImage(img image.Image, path string, extension string) error {
     fi, err := os.Create(path)
     if err != nil {
         log.Println("Error creating", path)
@@ -81,27 +83,51 @@ func saveImage(img image.Image, path string) error {
     defer fi.Close()
 
     // save image
-    jpeg.Encode(fi, img, nil)
+    encodeImage(fi, img, extension)
 
     // close fi on exit and check for its returned error
     return nil
 }
 
-func loadImage(path string) (image.Image, error) {
+func loadImage(path string, extension string) (image.Image, error) {
     fi, err := os.Open(path)
     if err != nil {
-        log.Println("Error reading", path)
+        log.Println("Error loading image from cache", path)
         return nil, err
     }
     defer fi.Close()
 
     var img image.Image
-    img, err = jpeg.Decode(fi)
+    img, err = decodeImage(fi, extension)
     if err != nil {
+        log.Println("Error decoding file", path)
         return nil, err
     }
 
     return img, nil
+}
+
+
+func decodeImage(r io.Reader, extension string) (img image.Image, err error) {
+    if res, _ := regexp.MatchString(`^.(?i)(jpg|jpeg)$`, extension); res {
+        img, err = jpeg.Decode(r)
+    } else if res, _ := regexp.MatchString(`^.(?i)(png)$`, extension); res {
+        img, err = png.Decode(r)
+    } else {
+        err = fmt.Errorf("Invalid file extension %s", extension)
+    }
+    return
+}
+
+func encodeImage(w io.Writer, img image.Image, extension string) (err error) {
+    if res, _ := regexp.MatchString(`^.(?i)(jpg|jpeg)$`, extension); res {
+        err = jpeg.Encode(w, img, nil)
+    } else if res, _ := regexp.MatchString(`^.(?i)(png)$`, extension); res {
+        err = png.Encode(w, img)
+    } else {
+        err = fmt.Errorf("Invalid file extension %s", extension)
+    }
+    return
 }
 
 type Handler struct {}
@@ -120,15 +146,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     if path := urlToPath(r.URL.Path, ext); pathExists(path) {
         // file is cached in it's requested size
         log.Println("file is cached in it's requested size")
-        img, err = loadImage(path)
+        img, err = loadImage(path, ext)
     } else if path := urlToPath(url, ext); pathExists(path) {
         // file is cached only in the original size
         log.Println("file is cached only in the original size")
-        img, err = loadImage(path)
+        img, err = loadImage(path, ext)
+        if err != nil {
+            log.Println("Error loading cached file")
+            log.Println(err)
+            return
+        }
         // resize image
         img = resize.Resize(uint(height), uint(width), img, resize.NearestNeighbor)
         // save resized version in cache
-        saveImage(img, urlToPath(r.URL.Path, ext))
+        saveImage(img, urlToPath(r.URL.Path, ext), ext)
     } else {
         // file is not cached at all
         log.Println("file is not cached at all")
@@ -145,23 +176,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         }
         defer resp.Body.Close()
 
-        // decode jpeg into image.Image
-        img, err = jpeg.Decode(resp.Body)
+        // decode into image.Image
+        img, err = decodeImage(resp.Body, ext)
         if err != nil {
             log.Println("Error decoding the image")
             log.Println(err)
             return
         }
         // save original image
-        saveImage(img, urlToPath(url, ext))
+        saveImage(img, urlToPath(url, ext), ext)
         // resize image
         img = resize.Resize(uint(height), uint(width), img, resize.NearestNeighbor)
         // save resized version in cache
-        saveImage(img, urlToPath(r.URL.Path, ext))
+        saveImage(img, urlToPath(r.URL.Path, ext), ext)
     }
 
     // write new image to request writer
-    err = jpeg.Encode(w, img, nil)
+    err = encodeImage(w, img, ext)
     if err != nil {
         log.Println("Error encoding file")
         log.Println(err)

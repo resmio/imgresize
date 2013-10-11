@@ -56,15 +56,16 @@ func parse_request(path string)(width, height uint64, url, ext string, err error
     return
 }
 
-// returns whether the given file or directory exists or not
-func pathExists(path string) (bool) {
+// returns whether the given file or directory exists
+func fileExists(path string) (bool) {
     _, err := os.Stat(path)
     if err == nil { return true }
     if os.IsNotExist(err) { return false }
     return false
 }
 
-func urlToPath(url string, ext string) string {
+// returns a path of the type <cachedir>/<hash of url><ext>
+func hashedFilePath(url string, ext string) string {
     checksum := hash(url)
     log.Println("Checksum", checksum)
     filename := strconv.FormatUint(uint64(checksum), 36) + ext
@@ -168,16 +169,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    //var img image.Image
-
     // 1. if original file is not present
     //    dowload and save original file in cache
 
     // path where the image having the original size should be
-    originalPath := urlToPath(url, ext);
-    if !pathExists(originalPath) {
+    imagePathOriginal := hashedFilePath(url, ext);
+    if !fileExists(imagePathOriginal) {
         log.Println("getting image", url)
-        err = getAndSaveFile(url, originalPath)
+        err = getAndSaveFile(url, imagePathOriginal)
         if err != nil {
             return
         }
@@ -189,10 +188,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     // corollary: in this case it also wasn't present in original size
     //   as it might happen that only 2 get executed, but in practice it will
     //   never happen that only 1 get excecuted
-    resizedPath := urlToPath(r.URL.Path, ext)
-    if !pathExists(resizedPath) {
+    imagePathResized := hashedFilePath(r.URL.Path, ext)
+    if !fileExists(imagePathResized) {
         log.Println("resizing image", width, height)
-        img, err := loadImage(originalPath, ext)
+        img, err := loadImage(imagePathOriginal, ext)
         if err != nil {
             log.Println("Error loading cached file")
             log.Println(err)
@@ -201,11 +200,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         // resize image
         img = resize.Resize(uint(width), uint(height), img, resize.NearestNeighbor)
         // save resized version in cache
-        saveImage(img, resizedPath, ext)
+        saveImage(img, imagePathResized, ext)
     }
 
     // 3. serve resized file which now certainly is in the cache
-    http.ServeFile(w, r, resizedPath)
+    http.ServeFile(w, r, imagePathResized)
     return
 }
 
@@ -215,7 +214,7 @@ func main() {
     flag.IntVar(&port, "port", 8080, "port")
     flag.Parse()
 
-    if !pathExists(cacheDir) {
+    if !fileExists(cacheDir) {
         log.Println("Create new cache directory", cacheDir)
         err = os.Mkdir(cacheDir, 0700)
         if err != nil {

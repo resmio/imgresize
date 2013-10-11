@@ -12,6 +12,7 @@ import (
     "os"
     "path/filepath"
     "flag"
+    "sync"
 )
 
 import "github.com/gographics/imagick/imagick"
@@ -73,9 +74,13 @@ func hashedFilePath(url string, ext string) string {
     return path
 }
 
+var resizeImageMutex sync.Mutex
 func resizeImage(src, dst string, width, height uint) {
+    resizeImageMutex.Lock()
+    defer resizeImageMutex.Unlock()
+    log.Println("Resizing file", src)
     if width == 0 && height == 0 {
-        panic(errors.New("width and height of image cannot be both 0"))
+        log.Panicln(errors.New("width and height of image cannot be both 0"))
     }
     imagick.Initialize()
     // Schedule cleanup
@@ -88,7 +93,7 @@ func resizeImage(src, dst string, width, height uint) {
 
     err = mw.ReadImage(src)
     if err != nil {
-        panic(err)
+        log.Panicln(err)
     }
 
     // Get original size
@@ -108,45 +113,50 @@ func resizeImage(src, dst string, width, height uint) {
     // The blur factor is a float, where > 1 is blurry, < 1 is sharp
     err = mw.ResizeImage(width, height, imagick.FILTER_LANCZOS, 1)
     if err != nil {
-        panic(err)
+        log.Panicln(err)
     }
 
     // Set the compression quality to 95 (high quality = low compression)
     err = mw.SetImageCompressionQuality(95)
     if err != nil {
-        panic(err)
+        log.Panicln(err)
     }
 
     mw.WriteImage(dst)
     if err != nil {
-        panic(err)
+        log.Panicln(err)
     }
+    log.Println("Done resizing file", src)
 }
 
 // get a file using Get and save it in path
 func getAndSaveFile(url, path string) error {
-        resp, err := http.Get(url)
-        if err != nil {
-            log.Println("Error getting the file", url)
-            fmt.Println(err)
-            return err
-        }
-        defer resp.Body.Close()
-        if code := resp.StatusCode; code != 200 {
-            log.Printf("Error getting the file %s: got status code %s", 
-                       url, code)
-            return err
-        }
+    log.Println("calling get on", url)
+    resp, err := http.Get(url)
+    log.Println("finished calling get")
+    if err != nil {
+        log.Println("Error getting the file", url)
+        fmt.Println(err)
+        return err
+    }
+    defer resp.Body.Close()
+    if code := resp.StatusCode; code != 200 {
+        log.Printf("Error getting the file %s: got status code %s", 
+                   url, code)
+        return err
+    }
 
-        fi, err := os.Create(path)
-        if err != nil {
-            panic(err)
-        }
-        defer fi.Close() 
-        if _, err := io.Copy(fi, resp.Body); err != nil {
-            panic(err)
-        }
-        return nil
+    fi, err := os.Create(path)
+    if err != nil {
+        log.Panicln(err)
+    }
+    defer fi.Close() 
+    log.Println("Copying file")
+    if _, err := io.Copy(fi, resp.Body); err != nil {
+        log.Panicln(err)
+    }
+    log.Println("done copying file")
+    return nil
 }
 
 type Handler struct {}

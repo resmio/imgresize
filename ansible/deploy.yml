@@ -12,12 +12,13 @@
         - git
         - supervisor
         - golang
+        - libmagickwand-dev
 
     - name: get the git project
       git: repo=https://bitbucket.org/resmio/imgresize.git dest={{project_dir}}
 
     - name: get the go dependencies
-      command: go get github.com/nfnt/resize
+      command: go get github.com/gographics/imagick/imagick
 
     - name: build the go project
       command: chdir={{project_dir}} go build

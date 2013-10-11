@@ -3,10 +3,7 @@ package main
 import (
     "fmt"
     "regexp"
-    "net/http"
-    "image"
-    "image/jpeg" 
-    "image/png" 
+    "net/http" 
     "log"
     "strconv"
     "hash/crc32"
@@ -17,7 +14,7 @@ import (
     "flag"
 )
 
-import "github.com/nfnt/resize"
+import "github.com/gographics/imagick/imagick"
 
 var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_ ]+)(\.\w+)$`)
 var cacheDir string
@@ -32,7 +29,7 @@ func hash(s string) uint32 {
 // - height of the image
 // - url where the original image is located (including the extension)
 // - extension (including the dot)
-func parse_request(path string)(width, height uint64, url, ext string, err error) {
+func parse_request(path string)(width, height uint, url, ext string, err error) {
     res := re.FindStringSubmatch(path)
 
     if res == nil {
@@ -41,16 +38,18 @@ func parse_request(path string)(width, height uint64, url, ext string, err error
     }
 
     var parseErr error
-    width, parseErr = strconv.ParseUint(res[1], 10, 64)
+    var width64, height64 uint64
+    width64, parseErr = strconv.ParseUint(res[1], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse width.")
         return
     }
-    height, parseErr = strconv.ParseUint(res[2], 10, 64)
+    height64, parseErr = strconv.ParseUint(res[2], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse height.")
         return
     }
+    width, height = uint(width64), uint(height64)
     url = res[3] + res[4]
     ext = res[4]
     return
@@ -74,60 +73,54 @@ func hashedFilePath(url string, ext string) string {
     return path
 }
 
-func saveImage(img image.Image, path string, extension string) error {
-    fi, err := os.Create(path)
+func resizeImage(src, dst string, width, height uint) {
+    if width == 0 && height == 0 {
+        panic(errors.New("width and height of image cannot be both 0"))
+    }
+    imagick.Initialize()
+    // Schedule cleanup
+    defer imagick.Terminate()
+    var err error
+
+    mw := imagick.NewMagickWand()
+    // Schedule cleanup
+    defer mw.Destroy()
+
+    err = mw.ReadImage(src)
     if err != nil {
-        log.Println("Error creating", path)
-        return err
+        panic(err)
     }
-    defer fi.Close()
 
-    // save image
-    encodeImage(fi, img, extension)
+    // Get original size
+    origWidth := mw.GetImageWidth()
+    origHeight := mw.GetImageHeight()
+    // keep proportions if widht or height set to 0
+    if width == 0 {
+        scaling := float64(height) / float64(origHeight)
+        width = uint(float64(origWidth) * scaling)
+    }
+    if height == 0 {
+        scaling := float64(width) / float64(origWidth)
+        height = uint(float64(origHeight) * scaling)
+    }
 
-    // close fi on exit and check for its returned error
-    return nil
-}
-
-func loadImage(path string, extension string) (image.Image, error) {
-    fi, err := os.Open(path)
+    // Resize the image using the Lanczos filter
+    // The blur factor is a float, where > 1 is blurry, < 1 is sharp
+    err = mw.ResizeImage(width, height, imagick.FILTER_LANCZOS, 1)
     if err != nil {
-        log.Println("Error loading image from cache", path)
-        return nil, err
+        panic(err)
     }
-    defer fi.Close()
 
-    var img image.Image
-    img, err = decodeImage(fi, extension)
+    // Set the compression quality to 95 (high quality = low compression)
+    err = mw.SetImageCompressionQuality(95)
     if err != nil {
-        log.Println("Error decoding file", path)
-        return nil, err
+        panic(err)
     }
 
-    return img, nil
-}
-
-
-func decodeImage(r io.Reader, extension string) (img image.Image, err error) {
-    if res, _ := regexp.MatchString(`^.(?i)(jpg|jpeg)$`, extension); res {
-        img, err = jpeg.Decode(r)
-    } else if res, _ := regexp.MatchString(`^.(?i)(png)$`, extension); res {
-        img, err = png.Decode(r)
-    } else {
-        err = fmt.Errorf("Invalid file extension %s", extension)
+    mw.WriteImage(dst)
+    if err != nil {
+        panic(err)
     }
-    return
-}
-
-func encodeImage(w io.Writer, img image.Image, extension string) (err error) {
-    if res, _ := regexp.MatchString(`^.(?i)(jpg|jpeg)$`, extension); res {
-        err = jpeg.Encode(w, img, nil)
-    } else if res, _ := regexp.MatchString(`^.(?i)(png)$`, extension); res {
-        err = png.Encode(w, img)
-    } else {
-        err = fmt.Errorf("Invalid file extension %s", extension)
-    }
-    return
 }
 
 // get a file using Get and save it in path
@@ -190,17 +183,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     //   never happen that only 1 get excecuted
     imagePathResized := hashedFilePath(r.URL.Path, ext)
     if !fileExists(imagePathResized) {
-        log.Println("resizing image", width, height)
-        img, err := loadImage(imagePathOriginal, ext)
-        if err != nil {
-            log.Println("Error loading cached file")
-            log.Println(err)
-            return
-        }
-        // resize image
-        img = resize.Resize(uint(width), uint(height), img, resize.NearestNeighbor)
-        // save resized version in cache
-        saveImage(img, imagePathResized, ext)
+        resizeImage(imagePathOriginal, imagePathResized, width, height)
     }
 
     // 3. serve resized file which now certainly is in the cache
@@ -215,7 +198,7 @@ func main() {
     flag.Parse()
 
     if !fileExists(cacheDir) {
-        log.Println("Create new cache directory", cacheDir)
+        log.Println("Createing new cache directory", cacheDir)
         err = os.Mkdir(cacheDir, 0700)
         if err != nil {
             log.Println("Error creating directory", cacheDir)

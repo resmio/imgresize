@@ -53,7 +53,6 @@ func parse_request(path string)(width, height uint64, url, ext string, err error
     }
     url = res[3] + res[4]
     ext = res[4]
-    fmt.Println(hash(url))  
     return
 }
 
@@ -130,73 +129,83 @@ func encodeImage(w io.Writer, img image.Image, extension string) (err error) {
     return
 }
 
+// get a file using Get and save it in path
+func getAndSaveFile(url, path string) error {
+        resp, err := http.Get(url)
+        if err != nil {
+            log.Println("Error getting the file", url)
+            fmt.Println(err)
+            return err
+        }
+        defer resp.Body.Close()
+        if code := resp.StatusCode; code != 200 {
+            log.Printf("Error getting the file %s: got status code %s", 
+                       url, code)
+            return err
+        }
+
+        fi, err := os.Create(path)
+        if err != nil {
+            panic(err)
+        }
+        defer fi.Close() 
+        if _, err := io.Copy(fi, resp.Body); err != nil {
+            panic(err)
+        }
+        return nil
+}
+
 type Handler struct {}
  
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    path := r.URL.Path
-    height, width, url, ext, err := parse_request(path)
+    log.Println("# new request:", r.URL.Path)
+
+    // 0. parse request
+    width, height, url, ext, err := parse_request(r.URL.Path)
     if err != nil {
-        log.Println("Bad request", path)
+        log.Println("Bad request", r.URL.Path)
         log.Println(err)
         return
     }
 
-    var img image.Image
+    //var img image.Image
 
-    if path := urlToPath(r.URL.Path, ext); pathExists(path) {
-        // file is cached in it's requested size
-        log.Println("file is cached in it's requested size")
-        img, err = loadImage(path, ext)
-    } else if path := urlToPath(url, ext); pathExists(path) {
-        // file is cached only in the original size
-        log.Println("file is cached only in the original size")
-        img, err = loadImage(path, ext)
+    // 1. if original file is not present
+    //    dowload and save original file in cache
+
+    // path where the image having the original size should be
+    originalPath := urlToPath(url, ext);
+    if !pathExists(originalPath) {
+        log.Println("getting image", url)
+        err = getAndSaveFile(url, originalPath)
+        if err != nil {
+            return
+        }
+    }
+
+    // 2. if file is not present in resized version
+    //    resize and save resized version in cache
+    // 
+    // corollary: in this case it also wasn't present in original size
+    //   as it might happen that only 2 get executed, but in practice it will
+    //   never happen that only 1 get excecuted
+    resizedPath := urlToPath(r.URL.Path, ext)
+    if !pathExists(resizedPath) {
+        log.Println("resizing image", width, height)
+        img, err := loadImage(originalPath, ext)
         if err != nil {
             log.Println("Error loading cached file")
             log.Println(err)
             return
         }
         // resize image
-        img = resize.Resize(uint(height), uint(width), img, resize.NearestNeighbor)
+        img = resize.Resize(uint(width), uint(height), img, resize.NearestNeighbor)
         // save resized version in cache
-        saveImage(img, urlToPath(r.URL.Path, ext), ext)
-    } else {
-        // file is not cached at all
-        log.Println("file is not cached at all")
-        // download the file
-        resp, err := http.Get(url)
-        if err != nil {
-            log.Println("Error getting the image")
-            fmt.Println(err)
-            return
-        }
-        if code := resp.StatusCode; code != 200 {
-            log.Println("Error getting the image: got status code", code)
-            return
-        }
-        defer resp.Body.Close()
-
-        // decode into image.Image
-        img, err = decodeImage(resp.Body, ext)
-        if err != nil {
-            log.Println("Error decoding the image")
-            log.Println(err)
-            return
-        }
-        // save original image
-        saveImage(img, urlToPath(url, ext), ext)
-        // resize image
-        img = resize.Resize(uint(height), uint(width), img, resize.NearestNeighbor)
-        // save resized version in cache
-        saveImage(img, urlToPath(r.URL.Path, ext), ext)
+        saveImage(img, resizedPath, ext)
     }
 
-    // write new image to request writer
-    err = encodeImage(w, img, ext)
-    if err != nil {
-        log.Println("Error encoding file")
-        log.Println(err)
-    }
+    // 3. serve resized file which now certainly is in the cache
+    http.ServeFile(w, r, resizedPath)
     return
 }
 

@@ -17,7 +17,7 @@ import (
 
 import "github.com/gographics/imagick/imagick"
 
-var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_ ]+)(\.\w+)$`)
+var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_ ]+)((\.\w+)?)$`)
 var cacheDir string
 
 func hash(s string) uint32 {

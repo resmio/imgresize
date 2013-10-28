@@ -2,6 +2,7 @@ package main
 
 import (
     "fmt"
+    "math"
     "regexp"
     "net/http" 
     "log"
@@ -78,6 +79,7 @@ var resizeImageMutex sync.Mutex
 func resizeImage(src, dst string, width, height uint) {
     resizeImageMutex.Lock()
     defer resizeImageMutex.Unlock()
+
     log.Println("Resizing file", src)
     if width == 0 && height == 0 {
         log.Panicln(errors.New("width and height of image cannot be both 0"))
@@ -96,21 +98,36 @@ func resizeImage(src, dst string, width, height uint) {
         log.Panicln(err)
     }
 
-    // Get original size
+    // get the original size
     origWidth := mw.GetImageWidth()
     origHeight := mw.GetImageHeight()
+    
     // keep proportions if widht or height set to 0
     if width == 0 {
         scaling := float64(height) / float64(origHeight)
-        width = uint(float64(origWidth) * scaling)
-    }
-    if height == 0 {
+        width = uint(math.Floor(scaling*float64(origWidth)+0.5))
+    } else if height == 0 {
         scaling := float64(width) / float64(origWidth)
-        height = uint(float64(origHeight) * scaling)
+        height = uint(math.Floor(scaling*float64(origHeight)+0.5))
+    } else if origWidth/origHeight > width/height {
+        // crop off some width
+        scaling := float64(height) / float64(origHeight)
+        newWidth := uint(math.Floor(float64(width)/scaling+0.5))
+        deltaWidth := origWidth - newWidth
+        if deltaWidth > 0 {
+            mw.CropImage(newWidth, origHeight, int(deltaWidth)/2, 0)
+        }
+    } else {
+        // crop off some height
+        scaling := float64(width) / float64(origWidth)
+        newHeight := uint(math.Floor(float64(height)*scaling+0.5))
+        deltaHeight := origHeight - newHeight
+        if deltaHeight > 0 {
+            mw.CropImage(origWidth, newHeight, 0, int(deltaHeight)/2)
+        }
     }
 
-    // Resize the image using the Lanczos filter
-    // The blur factor is a float, where > 1 is blurry, < 1 is sharp
+    // actually resize the image
     err = mw.ResizeImage(width, height, imagick.FILTER_LANCZOS, 1)
     if err != nil {
         log.Panicln(err)
@@ -122,7 +139,7 @@ func resizeImage(src, dst string, width, height uint) {
         log.Panicln(err)
     }
 
-    mw.WriteImage(dst)
+    err = mw.WriteImage(dst)
     if err != nil {
         log.Panicln(err)
     }

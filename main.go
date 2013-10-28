@@ -18,7 +18,7 @@ import (
 
 import "github.com/gographics/imagick/imagick"
 
-var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_ ]+)((\.\w+)?)$`)
+var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_ ]+?)((\.\w+)?)$`)
 var cacheDir string
 
 func hash(s string) uint32 {
@@ -31,7 +31,7 @@ func hash(s string) uint32 {
 // - height of the image
 // - url where the original image is located (including the extension)
 // - extension (including the dot)
-func parse_request(path string)(width, height uint, url, ext string, err error) {
+func parseRequest(path string)(width, height uint, url, ext string, err error) {
     res := re.FindStringSubmatch(path)
 
     if res == nil {
@@ -128,7 +128,7 @@ func resizeImage(src, dst string, width, height uint) {
         }
     }
 
-    // actually resize the image
+    // resize the image
     err = mw.ResizeImage(width, height, imagick.FILTER_LANCZOS, 1)
     if err != nil {
         log.Panicln(err)
@@ -183,7 +183,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     log.Println("# new request:", r.URL.Path)
 
     // 0. parse request
-    width, height, url, ext, err := parse_request(r.URL.Path)
+    width, height, url, ext, err := parseRequest(r.URL.Path)
     if err != nil {
         log.Println("Bad request", r.URL.Path)
         log.Println(err)

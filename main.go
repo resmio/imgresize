@@ -109,7 +109,8 @@ func resizeImage(src, dst string, width, height uint) {
     } else if height == 0 {
         scaling := float64(width) / float64(origWidth)
         height = uint(math.Floor(scaling*float64(origHeight)+0.5))
-    } else if origWidth/origHeight > width/height {
+    } else if float64(origWidth)/float64(origHeight) > 
+                                    float64(width)/float64(height) {
         // crop off some width
         scaling := float64(height) / float64(origHeight)
         newWidth := uint(math.Floor(float64(width)/scaling+0.5))

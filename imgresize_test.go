@@ -92,7 +92,7 @@ func TestImageResizeCropping(t *testing.T) {
     origImg.Set(25, 25, gray)
     origImg.Set(100-26, 100-26, gray)
 
-    // save it as jpeg
+    // save image as png
     src, _ := os.Create("test_tmp/src.png")
     png.Encode(src, origImg)
     src.Close()

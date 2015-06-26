@@ -4,7 +4,7 @@ import (
     "fmt"
     "math"
     "regexp"
-    "net/http" 
+    "net/http"
     "log"
     "strconv"
     "hash/crc32"
@@ -101,7 +101,7 @@ func resizeImage(src, dst string, width, height uint) {
     // get the original size
     origWidth := mw.GetImageWidth()
     origHeight := mw.GetImageHeight()
-    
+
     // keep proportions if widht or height set to 0
     if width == 0 {
         scaling := float64(height) / float64(origHeight)
@@ -109,7 +109,7 @@ func resizeImage(src, dst string, width, height uint) {
     } else if height == 0 {
         scaling := float64(width) / float64(origWidth)
         height = uint(math.Floor(scaling*float64(origHeight)+0.5))
-    } else if float64(origWidth)/float64(origHeight) > 
+    } else if float64(origWidth)/float64(origHeight) >
                                     float64(width)/float64(height) {
         // crop off some width
         scaling := float64(height) / float64(origHeight)
@@ -134,13 +134,19 @@ func resizeImage(src, dst string, width, height uint) {
         log.Panicln(err)
     }
 
-    // Set the compression quality to 95 (high quality = low compression)
-    err = mw.SetImageCompressionQuality(95)
+    err = mw.SetImageFormat("jpg")
+    log.Println("--------------------format")
     if err != nil {
         log.Panicln(err)
     }
 
-    err = mw.WriteImage(dst)
+    // Set the compression quality to 95 (high quality = low compression)
+    err = mw.SetImageCompressionQuality(1)
+    if err != nil {
+        log.Panicln(err)
+    }
+
+    err = mw.WriteImage(dst+".jpg")
     if err != nil {
         log.Panicln(err)
     }
@@ -159,7 +165,7 @@ func getAndSaveFile(url, path string) error {
     }
     defer resp.Body.Close()
     if code := resp.StatusCode; code != 200 {
-        log.Printf("Error getting the file %s: got status code %s", 
+        log.Printf("Error getting the file %s: got status code %s",
                    url, code)
         return err
     }
@@ -168,7 +174,7 @@ func getAndSaveFile(url, path string) error {
     if err != nil {
         log.Panicln(err)
     }
-    defer fi.Close() 
+    defer fi.Close()
     log.Println("Copying file")
     if _, err := io.Copy(fi, resp.Body); err != nil {
         log.Panicln(err)
@@ -178,7 +184,7 @@ func getAndSaveFile(url, path string) error {
 }
 
 type Handler struct {}
- 
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     log.Println("# new request:", r.URL.Path)
 
@@ -205,7 +211,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
     // 2. if file is not present in resized version
     //    resize and save resized version in cache
-    // 
+    //
     // corollary: in this case it also wasn't present in original size
     //   as it might happen that only 2 get executed, but in practice it will
     //   never happen that only 1 get excecuted

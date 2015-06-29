@@ -13,6 +13,7 @@ import (
     "os"
     "path/filepath"
     "flag"
+    "strings"
     "sync"
 )
 
@@ -53,7 +54,7 @@ func parseRequest(path string)(width, height uint, outputFormat, url, ext string
         return
     }
     width, height = uint(width64), uint(height64)
-    outputFormat = res[3]
+    outputFormat = strings.Replace(res[3], "/", ".", 1)
     url = res[4] + res[5]
     ext = res[5]
     return

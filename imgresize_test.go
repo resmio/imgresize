@@ -11,16 +11,16 @@ import (
 )
 
 func TestParseRequest(t *testing.T) {
-    w, h, url, ext, err := parseRequest("/100x0/http://some/url.jpg")
+    w, h, url, ext, outputFormat, err := parseRequest("/100x0/http://some/url.jpg")
     if (w != 100 || h != 0 || url != "http://some/url.jpg" ||
-                ext != ".jpg" || err != nil) {
-        log.Println("/100x0/http://some/url.jpg failed", w, h, url, ext, err)
+                ext != ".jpg" || outputFormat !="" || err != nil) {
+        log.Println("/100x0/http://some/url.jpg failed", w, h, url, outputFormat, ext, err)
         t.FailNow()
     }
-    w, h, url, ext, err = parseRequest("/0x12/https://some/url.JPEG")
+    w, h, url, ext, outputFormat, err = parseRequest("/0x12/jpg/https://some/url.JPEG")
     if (w != 0 || h != 12 ||  url != "https://some/url.JPEG" ||
-                ext != ".JPEG" || err != nil) {
-        log.Println("/0x12/https://some/url.JPEG failed", w, h, url, ext, err)
+                ext != ".JPEG" || outputFormat != ".jpg" || err != nil) {
+        log.Println("/0x12/https://some/url.JPEG failed", w, h, url, outputFormat, ext, err)
         t.FailNow()
     }
 }
@@ -50,7 +50,7 @@ func TestImageResizeSizes(t *testing.T) {
 
     os.Mkdir("test_tmp", 0700)
     defer os.RemoveAll("test_tmp")
-    
+
     for _, options := range sizes {
         origW, origH := options[0], options[1]
         paramW, paramH := options[2], options[3]
@@ -64,7 +64,7 @@ func TestImageResizeSizes(t *testing.T) {
         jpeg.Encode(src, origImg, nil)
         src.Close()
 
-        resizeImage("test_tmp/src.jpg", "test_tmp/dst.jpg", uint(paramW), uint(paramH))
+        resizeImage("test_tmp/src.jpg", "test_tmp/dst.jpg", "jpg", uint(paramW), uint(paramH))
 
         dst, _ := os.Open("test_tmp/dst.jpg")
         img, _ := jpeg.Decode(dst)
@@ -98,7 +98,7 @@ func TestImageResizeCropping(t *testing.T) {
     src.Close()
 
     // resize
-    resizeImage("test_tmp/src.png", "test_tmp/dst.png", 50, 100)
+    resizeImage("test_tmp/src.png", "test_tmp/dst.png", "jpg", 50, 100)
 
     // reconvert to image.Image
     dst, _ := os.Open("test_tmp/dst.png")
@@ -133,4 +133,30 @@ func colorsEqual(first, second color.Color) bool {
     r1, g1, b1, a1 := first.RGBA()
     r2, g2, b2, a2 := second.RGBA()
     return r1 == r2 && g1 == g2 && b1 == b2 && a1 == a2
+}
+
+func testFormatConversion(t *testing.T) {
+  os.Mkdir("test_tmp", 0700)
+  defer os.RemoveAll("test_tmp")
+
+  // create a new image
+  origImg := image.NewGray(image.Rect(0, 0, 100, 100))
+
+  // save it as png
+  src, _ := os.Create("test_tmp/src.png")
+  png.Encode(src, origImg)
+  src.Close()
+
+  // convert it to jpeg
+  resizeImage("test_tmp/src.png", "test_tmp/dst.jpg", "jpg", 100, 100)
+
+  // reconvert to image.Image
+  dst, _ := os.Open("test_tmp/dst.jpg")
+  img, _ := jpeg.Decode(dst)
+  dst.Close()
+
+  // check that both images are the same
+  if origImg != img {
+    t.FailNow()
+  }
 }

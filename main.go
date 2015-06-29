@@ -18,7 +18,7 @@ import (
 
 import "github.com/gographics/imagick/imagick"
 
-var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_ ]+?)((\.\w+)?)$`)
+var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)(/jpg)?/(http[s]?://[\w/\.\-_ ]+?)((\.\w+)?)$`)
 var cacheDir string
 
 func hash(s string) uint32 {
@@ -29,9 +29,10 @@ func hash(s string) uint32 {
 // returns
 // - width of the image
 // - height of the image
+// - If we want the image converted to jpg
 // - url where the original image is located (including the extension)
 // - extension (including the dot)
-func parseRequest(path string)(width, height uint, url, ext string, err error) {
+func parseRequest(path string)(width, height uint, convert_to_jpg, url, ext string, err error) {
     res := re.FindStringSubmatch(path)
 
     if res == nil {
@@ -52,8 +53,9 @@ func parseRequest(path string)(width, height uint, url, ext string, err error) {
         return
     }
     width, height = uint(width64), uint(height64)
-    url = res[3] + res[4]
-    ext = res[4]
+    convert_to_jpg = res[3]
+    url = res[4] + res[5]
+    ext = res[5]
     return
 }
 
@@ -141,7 +143,7 @@ func resizeImage(src, dst string, width, height uint) {
     }
 
     // Set the compression quality to 95 (high quality = low compression)
-    err = mw.SetImageCompressionQuality(1)
+    err = mw.SetImageCompressionQuality(70)
     if err != nil {
         log.Panicln(err)
     }
@@ -189,7 +191,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     log.Println("# new request:", r.URL.Path)
 
     // 0. parse request
-    width, height, url, ext, err := parseRequest(r.URL.Path)
+    width, height, convert_to_jpg, url, ext, err := parseRequest(r.URL.Path)
     if err != nil {
         log.Println("Bad request", r.URL.Path)
         log.Println(err)
@@ -208,6 +210,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
             return
         }
     }
+
+    // If convert to jpg is true, we switch the extension to jpg
+    // before checking if the image is already cached, if we don't do this
+    // we'd be checking for the original format
+    if convert_to_jpg == "jpg" { ext = "jpg" }
 
     // 2. if file is not present in resized version
     //    resize and save resized version in cache

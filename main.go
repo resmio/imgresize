@@ -19,7 +19,7 @@ import (
 
 import "github.com/gographics/imagick/imagick"
 
-var regex, err = regexp.Compile(`^/([0-9]+)x([0-9]+)(/jpg)?/(http[s]?://[\w/\.\-_ ]+?)((\.\w+)?)$`)
+var regex, err = regexp.Compile(`/([0-9]+)x([0-9]+)(/[0-9]+)?(/jpg)?/(http[s]?://[\w/\.\-_ ]+?)((\.\w+)?)$`)
 var cacheDir string
 
 func hash(s string) uint32 {
@@ -33,7 +33,7 @@ func hash(s string) uint32 {
 // - If we want the image converted to jpg
 // - url where the original image is located (including the extension)
 // - extension (including the dot)
-func parseRequest(path string)(width, height uint, outputFormat, url, ext string, err error) {
+func parseRequest(path string)(width, height, compression uint, outputFormat, url, ext string, err error) {
     res := regex.FindStringSubmatch(path)
 
     if res == nil {
@@ -42,7 +42,7 @@ func parseRequest(path string)(width, height uint, outputFormat, url, ext string
     }
 
     var parseErr error
-    var width64, height64 uint64
+    var width64, height64, compression64 uint64
     width64, parseErr = strconv.ParseUint(res[1], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse width.")
@@ -53,10 +53,19 @@ func parseRequest(path string)(width, height uint, outputFormat, url, ext string
         err = errors.New("Could not parse height.")
         return
     }
-    width, height = uint(width64), uint(height64)
-    outputFormat = strings.Replace(res[3], "/", ".", 1)
-    url = res[4] + res[5]
-    ext = res[5]
+    if res[3] != "" {
+      // Remove the back slash from the regex group
+      res[3] = res[3][1:len(res[3])]
+      compression64, parseErr = strconv.ParseUint(res[3], 10, 64)
+      if parseErr != nil {
+          err = errors.New("Could not parse compression.")
+          return
+      }
+    }
+    width, height, compression = uint(width64), uint(height64), uint(compression64)
+    outputFormat = strings.Replace(res[4], "/", ".", 1)
+    url = res[5] + res[6]
+    ext = res[6]
     return
 }
 
@@ -79,7 +88,7 @@ func hashedFilePath(url string, ext string) string {
 }
 
 var resizeImageMutex sync.Mutex
-func resizeImage(src, dst, outputFormat string, width, height uint) {
+func resizeImage(src, dst, outputFormat string, width, height, compression uint) {
     resizeImageMutex.Lock()
     defer resizeImageMutex.Unlock()
 
@@ -143,7 +152,7 @@ func resizeImage(src, dst, outputFormat string, width, height uint) {
     }
 
     // Set the compression quality to 95 (high quality = low compression)
-    err = mw.SetImageCompressionQuality(70)
+    err = mw.SetImageCompressionQuality(compression)
     if err != nil {
         log.Panicln(err)
     }
@@ -191,7 +200,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) {
     log.Println("# new request:", request.URL.Path)
 
     // 0. parse request
-    width, height, outputFormat, url, ext, err := parseRequest(request.URL.Path)
+    width, height, compression, outputFormat, url, ext, err := parseRequest(request.URL.Path)
     if err != nil {
         log.Println("Bad request", request.URL.Path)
         log.Println(err)
@@ -224,7 +233,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) {
     //   never happen that only 1 get excecuted
     imagePathResized := hashedFilePath(request.URL.Path, ext)
     if !fileExists(imagePathResized) {
-        resizeImage(imagePathOriginal, imagePathResized, outputFormat, width, height)
+        resizeImage(imagePathOriginal, imagePathResized, outputFormat, width, height, compression)
     }
 
     // 3. serve resized file which now certainly is in the cache

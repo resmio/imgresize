@@ -57,6 +57,10 @@ func parseRequest(path string)(width, height, compression uint, outputFormat, ur
       // Remove the back slash from the regex group
       res[3] = res[3][1:len(res[3])]
       compression64, parseErr = strconv.ParseUint(res[3], 10, 64)
+      if compression64 < 1 || compression64 > 100 {
+        err = errors.New("Compression must be a value between 1 and 100.")
+        return
+      }
       if parseErr != nil {
           err = errors.New("Could not parse compression.")
           return

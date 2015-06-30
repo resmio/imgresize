@@ -11,13 +11,13 @@ import (
 )
 
 func TestParseRequest(t *testing.T) {
-    w, h, outputFormat, url, ext, err := parseRequest("/100x0/http://some/url.jpg")
+    w, h, compression, outputFormat, url, ext, err := parseRequest("/100x0/http://some/url.jpg")
     if (w != 100 || h != 0 || url != "http://some/url.jpg" ||
-                ext != ".jpg" || outputFormat !="" || err != nil) {
-        log.Println("/100x0/http://some/url.jpg failed", w, h, url, outputFormat, ext, err)
+                ext != ".jpg" || outputFormat != "" || compression != 0 || err != nil) {
+        log.Println("/100x0/http://some/url.jpg failed", w, h, url, outputFormat, compression, ext, err)
         t.FailNow()
     }
-    w, h, outputFormat, url, ext, err = parseRequest("/0x12/jpg/https://some/url.JPEG")
+    w, h, compression, outputFormat, url, ext, err = parseRequest("/0x12/70/jpg/https://some/url.JPEG")
     if (w != 0 || h != 12 ||  url != "https://some/url.JPEG" ||
                 ext != ".JPEG" || outputFormat != ".jpg" || err != nil) {
         log.Println("/0x12/https://some/url.JPEG failed", w, h, url, outputFormat, ext, err)
@@ -64,7 +64,7 @@ func TestImageResizeSizes(t *testing.T) {
         jpeg.Encode(src, origImg, nil)
         src.Close()
 
-        resizeImage("test_tmp/src.jpg", "test_tmp/dst.jpg", "jpg", uint(paramW), uint(paramH))
+        resizeImage("test_tmp/src.jpg", "test_tmp/dst.jpg", "jpg", uint(paramW), uint(paramH), 0)
 
         dst, _ := os.Open("test_tmp/dst.jpg")
         img, _ := jpeg.Decode(dst)
@@ -98,7 +98,7 @@ func TestImageResizeCropping(t *testing.T) {
     src.Close()
 
     // resize
-    resizeImage("test_tmp/src.png", "test_tmp/dst.png", "jpg", 50, 100)
+    resizeImage("test_tmp/src.png", "test_tmp/dst.png", "jpg", 50, 100, 25)
 
     // reconvert to image.Image
     dst, _ := os.Open("test_tmp/dst.png")
@@ -148,7 +148,7 @@ func testFormatConversion(t *testing.T) {
   src.Close()
 
   // convert it to jpeg
-  resizeImage("test_tmp/src.png", "test_tmp/dst.jpg", "jpg", 100, 100)
+  resizeImage("test_tmp/src.png", "test_tmp/dst.jpg", "jpg", 100, 100, 67)
 
   // reconvert to image.Image
   dst, _ := os.Open("test_tmp/dst.jpg")

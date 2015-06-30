@@ -43,16 +43,19 @@ func parseRequest(path string)(width, height, compression uint, outputFormat, ur
 
     var parseErr error
     var width64, height64, compression64 uint64
+
     width64, parseErr = strconv.ParseUint(res[1], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse width.")
         return
     }
+
     height64, parseErr = strconv.ParseUint(res[2], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse height.")
         return
     }
+
     if res[3] != "" {
       // Remove the back slash from the regex group
       res[3] = res[3][1:len(res[3])]
@@ -66,6 +69,7 @@ func parseRequest(path string)(width, height, compression uint, outputFormat, ur
           return
       }
     }
+
     width, height, compression = uint(width64), uint(height64), uint(compression64)
     outputFormat = strings.Replace(res[4], "/", ".", 1)
     url = res[5] + res[6]

@@ -33,7 +33,7 @@ func hash(s string) uint32 {
 // - If we want the image converted to jpg
 // - url where the original image is located (including the extension)
 // - extension (including the dot)
-func parseRequest(path string)(width, height uint, url, ext, outputFormat string, err error) {
+func parseRequest(path string)(width, height uint, outputFormat, url, ext string, err error) {
     res := regex.FindStringSubmatch(path)
 
     if res == nil {

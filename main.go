@@ -4,7 +4,7 @@ import (
     "fmt"
     "math"
     "regexp"
-    "net/http" 
+    "net/http"
     "log"
     "strconv"
     "hash/crc32"
@@ -13,12 +13,13 @@ import (
     "os"
     "path/filepath"
     "flag"
+    "strings"
     "sync"
 )
 
 import "github.com/gographics/imagick/imagick"
 
-var re, err = regexp.Compile(`^/([0-9]+)x([0-9]+)/(http[s]?://[\w/\.\-_ ]+?)((\.\w+)?)$`)
+var regex, err = regexp.Compile(`/([0-9]+)x([0-9]+)(/[0-9]+)?(/jpg)?/(http[s]?://[\w/\.\-_ ]+?)((\.\w+)?)$`)
 var cacheDir string
 
 func hash(s string) uint32 {
@@ -29,10 +30,11 @@ func hash(s string) uint32 {
 // returns
 // - width of the image
 // - height of the image
+// - If we want the image converted to jpg
 // - url where the original image is located (including the extension)
 // - extension (including the dot)
-func parseRequest(path string)(width, height uint, url, ext string, err error) {
-    res := re.FindStringSubmatch(path)
+func parseRequest(path string)(width, height, compression uint, outputFormat, url, ext string, err error) {
+    res := regex.FindStringSubmatch(path)
 
     if res == nil {
         err = errors.New("No match for the regexp.")
@@ -40,20 +42,38 @@ func parseRequest(path string)(width, height uint, url, ext string, err error) {
     }
 
     var parseErr error
-    var width64, height64 uint64
+    var width64, height64, compression64 uint64
+
     width64, parseErr = strconv.ParseUint(res[1], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse width.")
         return
     }
+
     height64, parseErr = strconv.ParseUint(res[2], 10, 64)
     if parseErr != nil {
         err = errors.New("Could not parse height.")
         return
     }
-    width, height = uint(width64), uint(height64)
-    url = res[3] + res[4]
-    ext = res[4]
+
+    if res[3] != "" {
+      // Remove the back slash from the regex group
+      res[3] = res[3][1:len(res[3])]
+      compression64, parseErr = strconv.ParseUint(res[3], 10, 64)
+      if compression64 < 1 || compression64 > 100 {
+        err = errors.New("Compression must be a value between 1 and 100.")
+        return
+      }
+      if parseErr != nil {
+          err = errors.New("Could not parse compression.")
+          return
+      }
+    }
+
+    width, height, compression = uint(width64), uint(height64), uint(compression64)
+    outputFormat = strings.Replace(res[4], "/", ".", 1)
+    url = res[5] + res[6]
+    ext = res[6]
     return
 }
 
@@ -76,7 +96,7 @@ func hashedFilePath(url string, ext string) string {
 }
 
 var resizeImageMutex sync.Mutex
-func resizeImage(src, dst string, width, height uint) {
+func resizeImage(src, dst, outputFormat string, width, height, compression uint) {
     resizeImageMutex.Lock()
     defer resizeImageMutex.Unlock()
 
@@ -101,7 +121,7 @@ func resizeImage(src, dst string, width, height uint) {
     // get the original size
     origWidth := mw.GetImageWidth()
     origHeight := mw.GetImageHeight()
-    
+
     // keep proportions if widht or height set to 0
     if width == 0 {
         scaling := float64(height) / float64(origHeight)
@@ -109,7 +129,7 @@ func resizeImage(src, dst string, width, height uint) {
     } else if height == 0 {
         scaling := float64(width) / float64(origWidth)
         height = uint(math.Floor(scaling*float64(origHeight)+0.5))
-    } else if float64(origWidth)/float64(origHeight) > 
+    } else if float64(origWidth)/float64(origHeight) >
                                     float64(width)/float64(height) {
         // crop off some width
         scaling := float64(height) / float64(origHeight)
@@ -134,8 +154,13 @@ func resizeImage(src, dst string, width, height uint) {
         log.Panicln(err)
     }
 
+    err = mw.SetImageFormat(outputFormat)
+    if err != nil {
+        log.Panicln(err)
+    }
+
     // Set the compression quality to 95 (high quality = low compression)
-    err = mw.SetImageCompressionQuality(95)
+    err = mw.SetImageCompressionQuality(compression)
     if err != nil {
         log.Panicln(err)
     }
@@ -159,7 +184,7 @@ func getAndSaveFile(url, path string) error {
     }
     defer resp.Body.Close()
     if code := resp.StatusCode; code != 200 {
-        log.Printf("Error getting the file %s: got status code %s", 
+        log.Printf("Error getting the file %s: got status code %s",
                    url, code)
         return err
     }
@@ -168,7 +193,7 @@ func getAndSaveFile(url, path string) error {
     if err != nil {
         log.Panicln(err)
     }
-    defer fi.Close() 
+    defer fi.Close()
     log.Println("Copying file")
     if _, err := io.Copy(fi, resp.Body); err != nil {
         log.Panicln(err)
@@ -178,14 +203,14 @@ func getAndSaveFile(url, path string) error {
 }
 
 type Handler struct {}
- 
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    log.Println("# new request:", r.URL.Path)
+
+func (h *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) {
+    log.Println("# new request:", request.URL.Path)
 
     // 0. parse request
-    width, height, url, ext, err := parseRequest(r.URL.Path)
+    width, height, compression, outputFormat, url, ext, err := parseRequest(request.URL.Path)
     if err != nil {
-        log.Println("Bad request", r.URL.Path)
+        log.Println("Bad request", request.URL.Path)
         log.Println(err)
         return
     }
@@ -203,19 +228,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         }
     }
 
+    // If convert to jpg is true, we switch the extension to jpg
+    // before checking if the image is already cached, if we don't do this
+    // we'd be checking for the original format
+    if outputFormat != "" { ext = outputFormat }
+
     // 2. if file is not present in resized version
     //    resize and save resized version in cache
-    // 
+    //
     // corollary: in this case it also wasn't present in original size
     //   as it might happen that only 2 get executed, but in practice it will
     //   never happen that only 1 get excecuted
-    imagePathResized := hashedFilePath(r.URL.Path, ext)
+    imagePathResized := hashedFilePath(request.URL.Path, ext)
     if !fileExists(imagePathResized) {
-        resizeImage(imagePathOriginal, imagePathResized, width, height)
+        resizeImage(imagePathOriginal, imagePathResized, outputFormat, width, height, compression)
     }
 
     // 3. serve resized file which now certainly is in the cache
-    http.ServeFile(w, r, imagePathResized)
+    http.ServeFile(w, request, imagePathResized)
     return
 }
 

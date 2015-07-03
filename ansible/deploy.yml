@@ -15,7 +15,7 @@
         - libmagickwand-dev
 
     - name: get the git project
-      git: repo=https://bitbucket.org/resmio/imgresize.git dest={{project_dir}}
+      git: repo=https://github.com/resmio/imgresize.git dest={{project_dir}}
 
     - name: get the go dependencies
       command: go get github.com/gographics/imagick/imagick

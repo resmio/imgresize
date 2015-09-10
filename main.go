@@ -5,6 +5,7 @@ import (
     "math"
     "regexp"
     "net/http"
+    "net/url"
     "log"
     "strconv"
     "hash/crc32"
@@ -19,7 +20,7 @@ import (
 
 import "github.com/gographics/imagick/imagick"
 
-var regex, err = regexp.Compile(`/([0-9]+)x([0-9]+)(/[0-9]+)?(/jpg)?/(http[s]?://[\w/\.\-_ ]+?)((\.\w+)?)$`)
+var regex, err = regexp.Compile(`/([0-9]+)x([0-9]+)(/[0-9]+)?(/jpg)?/(http[s]?://[\w/\.\-\%_g ]+?)((\.\w+)?)$`)
 var cacheDir string
 
 func hash(s string) uint32 {
@@ -173,19 +174,26 @@ func resizeImage(src, dst, outputFormat string, width, height, compression uint)
 }
 
 // get a file using Get and save it in path
-func getAndSaveFile(url, path string) error {
-    log.Println("calling get on", url)
-    resp, err := http.Get(url)
+func getAndSaveFile(imageUrl, path string) error {
+    log.Println("calling get on", imageUrl)
+    var Url *url.URL
+    Url, err := url.Parse(imageUrl)
+    if err != nil {
+  		log.Println("Could not parse url", imageUrl)
+      fmt.Println(err)
+    }
+    Url.Path = Url.EscapedPath()
+    resp, err := http.Get(Url.String())
     log.Println("finished calling get")
     if err != nil {
-        log.Println("Error getting the file", url)
+        log.Println("Error getting the file", Url.String())
         fmt.Println(err)
         return err
     }
     defer resp.Body.Close()
     if code := resp.StatusCode; code != 200 {
         log.Printf("Error getting the file %s: got status code %s",
-                   url, code)
+                   Url.String(), code)
         return err
     }
 

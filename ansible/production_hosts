@@ -1,2 +1,2 @@
 [production]
-146.185.151.181 ansible_ssh_user=root project_dir=/imgresize
+46.101.144.202 ansible_ssh_user=root project_dir=/imgresize

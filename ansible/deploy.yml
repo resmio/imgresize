@@ -6,22 +6,33 @@
     - name: update apt repo
       apt: update-cache=yes
 
+    - name: add golang ppa
+      apt_repository: repo='ppa:evarlast/golang1.5'
+
     - name: install git
       apt: name={{item}} state=installed
       with_items:
         - git
         - supervisor
-        - golang
+        # - golang-go
         - libmagickwand-dev
+
+    # - name: Set GOPATH for all users
+    #   copy: src=./files/go-path.sh
+    #         dest=/etc/profile.d
 
     - name: get the git project
       git: repo=https://github.com/resmio/imgresize.git dest={{project_dir}}
 
     - name: get the go dependencies
       command: go get github.com/gographics/imagick/imagick
+      environment:
+        GOPATH: /root/go
 
     - name: build the go project
       command: chdir={{project_dir}} go build
+      environment:
+        GOPATH: /root/go
 
     - name: create cache directory
       command: mkdir -p {{project_dir}}/cachedir/
